@@ -57,8 +57,9 @@ public class ProfileController {
 
     @GetMapping(path = "/get")
     @PreAuthorize("hasAuthority('SCOPE_user')")
-    public String getProfile(@RequestBody UserProfileDTO profileDTO, HttpServletRequest principal) throws ExecutionException, InterruptedException, TimeoutException {
+    public ResponseEntity<UserProfileDTO> getProfile( HttpServletRequest principal) throws ExecutionException, InterruptedException, TimeoutException {
         log.info("Principal: {}", principal);
+        UserProfileDTO profileDTO = new UserProfileDTO();
         profileDTO.setUserId(principal.getUserPrincipal().getName());
         ProducerRecord<String, UserProfileDTO> record = new ProducerRecord<>("profile-get", profileDTO);
         record.headers().add(new RecordHeader(KafkaHeaders.REPLY_TOPIC, "profile-get-response".getBytes()));
@@ -68,10 +69,14 @@ public class ProfileController {
         try{
             ConsumerRecord<String, UserProfileDTO> response = future.get(10, java.util.concurrent.TimeUnit.SECONDS);
             log.info("Response: {}", response.value());
+            if(response.value().getUserId().equals("NOT_FOUND")){
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(response.value());
         }catch (Exception e){
             log.error("Error: {}", e.getMessage());
         }
-        return "Profile retrieved";
+        return ResponseEntity.notFound().build();
     }
 
     @PostMapping(path = "/profile-picture")
@@ -100,6 +105,36 @@ public class ProfileController {
 
         } catch (Exception e) {
             log.error("Error getting profile picture: {}", e.getMessage());
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    @PostMapping(path = "/audio")
+    @PreAuthorize("hasAuthority('SCOPE_user')")
+    public String uploadAudio(@RequestParam("file") MultipartFile file, HttpServletRequest principal) {
+        try {
+            String id = storageService.storeAudio(principal.getUserPrincipal().getName(), file);
+            log.info("Audio uploaded with ID: {}", id);
+        } catch (Exception e) {
+            log.error("Error uploading audio: {}", e.getMessage());
+            return "Error uploading audio";
+        }
+        // Get User ID from principal
+        return "Audio uploaded";
+    }
+
+    @GetMapping(path = "/audio")
+    @PreAuthorize("hasAuthority('SCOPE_user')")
+    public ResponseEntity<ByteArrayResource> getAudio(HttpServletRequest principal) {
+        try {
+            ProfilePicture profilePicture = storageService.getAudio(principal.getUserPrincipal().getName());
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType("audio/mpeg"))
+                    .headers(headers -> headers.setContentDispositionFormData("attachment", "audio.mp3"))
+                    .body(new ByteArrayResource(profilePicture.getImage()));
+
+        } catch (Exception e) {
+            log.error("Error getting audio: {}", e.getMessage());
         }
         return ResponseEntity.notFound().build();
     }

@@ -51,4 +51,25 @@ public class StorageService {
                 .build();
     }
 
+    public String storeAudio (String userId, MultipartFile audio) throws IOException {
+        DBObject metadata = new BasicDBObject();
+        metadata.put("fileSize", audio.getSize());
+        if(template.findOne(new Query(Criteria.where("filename").is(userId + "_audio"))) != null) {
+            template.delete(new Query(Criteria.where("filename").is(userId + "_audio")));
+        }
+        ObjectId id = template.store(audio.getInputStream(), userId + "_audio", audio.getContentType(), metadata);
+        return id.toString();
+    }
+
+    public ProfilePicture getAudio(String name) throws IOException {
+        GridFSFile file = template.findOne(new Query(Criteria.where("filename").is(name + "_audio")));
+        if (file == null || file.getMetadata() == null) {
+            return null;
+        }
+        return ProfilePicture.builder()
+                .userId(file.getFilename())
+                .fileSize(file.getMetadata().get("fileSize").toString())
+                .image(gridFsOperations.getResource(file).getInputStream().readAllBytes())
+                .build();
+    }
 }
